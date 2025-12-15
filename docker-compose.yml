@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - commerce-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - commerce-net
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - commerce-net
+
+  sap-mcp-server:
+    build: 
+      context: ./services/sap-mcp-server
+    container_name: sap-mcp-server
+    environment:
+      - SAP_OCC_BASE_URL=${SAP_OCC_BASE_URL}
+      - SAP_OCC_USERNAME=${SAP_OCC_USERNAME}
+      - SAP_OCC_PASSWORD=${SAP_OCC_PASSWORD}
+    ports:
+      - "8001:8001"
+    networks:
+      - commerce-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  agent-app:
+    build: 
+      context: ./services/agent-app
+    container_name: agent-app
+    depends_on:
+      - ollama
+      - qdrant
+      - redis
+      - sap-mcp-server
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+      - REDIS_URL=redis://redis:6379/0
+      - SAP_MCP_SERVER_URL=http://sap-mcp-server:8001/sse
+      - MODEL_NAME=${MODEL_NAME}
+    ports:
+      - "8000:8000"
+    networks:
+      - commerce-net
+
+networks:
+  commerce-net:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  qdrant_data:

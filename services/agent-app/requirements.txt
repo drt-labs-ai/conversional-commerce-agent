@@ -1,0 +1,10 @@
+langchain
+langgraph
+langchain-ollama
+langchain-qdrant
+qdrant-client
+chainlit
+httpx
+pydantic
+python-dotenv
+mcp

@@ -12,18 +12,18 @@ The system is composed of Docker services orchestrated via Docker Compose.
 
 ```mermaid
 graph TD
-    User[User via Chainlit UI] <--> AgentApp[Agent App (LangGraph)]
+    User[User via Chainlit UI] <--> AgentApp[Agent App -LangGraph-]
     
     subgraph "Docker Network (commerce-net)"
-        AgentApp -->|LLM Inference| Ollama[Ollama (Llama 3)]
-        AgentApp -->|Vector Search| Qdrant[Qdrant (Vector DB)]
+        AgentApp -->|LLM Inference| Ollama[Ollama -Llama 3-]
+        AgentApp -->|Vector Search| Qdrant[Qdrant -Vector DB-]
         AgentApp -->|State Persistence| Redis[Redis]
         
-        AgentApp -->|MCP Protocol (SSE)| MCPServer[SAP MCP Server]
+        AgentApp -->|MCP Protocol -SSE-| MCPServer[SAP MCP Server]
     end
     
     subgraph "External/Host"
-        MCPServer -->|OCC REST APIs| SAP[SAP Commerce (Localhost)]
+        MCPServer -->|OCC REST APIs| SAP[SAP Commerce -Localhost-]
         Qdrant -.->|Ingestion| SAP
     end
 ```

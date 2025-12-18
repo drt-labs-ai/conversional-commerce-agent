@@ -3,7 +3,7 @@ import asyncio
 import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Configuration
 SAP_OCC_BASE_URL = os.getenv("SAP_OCC_BASE_URL", "https://host.docker.internal:9002/occ/v2")
@@ -16,15 +16,15 @@ async def fetch_products(page_size=20, total_pages=5):
     products = []
     async with httpx.AsyncClient(verify=False) as client:
         for page in range(total_pages):
-            url = f"{SAP_OCC_BASE_URL}/powertools/products/search"
-            params = {"pageSize": page_size, "currentPage": page, "fields": "FULL"}
+            url = f"{SAP_OCC_BASE_URL}/electronics/products/search"
+            params = {"query": ":relevance", "pageSize": page_size, "currentPage": page, "fields": "FULL"}
             try:
                 response = await client.get(url, params=params, timeout=10.0)
                 if response.status_code == 200:
                     data = response.json()
                     products.extend(data.get("products", []))
                 else:
-                    print(f"Failed to fetch page {page}: {response.status_code}")
+                    print(f"Failed to fetch page {page}: {response.status_code} - {response.text}")
             except Exception as e:
                 print(f"Error fetching page {page}: {e}")
     return products
@@ -46,16 +46,14 @@ def ingest_products():
     # Re-create collection
     client.recreate_collection(
         collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=768, distance=Distance.COSINE), 
-        # Note: nomic-embed-text/llama3 size varies. llama3 is 4096? nomic is 768.
-        # We need to match the embedding model. Let's assume nomic-embed-text for embeddings.
+        vectors_config=VectorParams(size=384, distance=Distance.COSINE), 
+        # Note: all-MiniLM-L6-v2 maps to 384 dimensions
     )
 
     # 3. Initialize Embeddings
     # We should use a specific embedding model, not the chat model
-    embeddings_model = OllamaEmbeddings(
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
-        model="nomic-embed-text" 
+    embeddings_model = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2"
     )
 
     points = []
@@ -77,10 +75,13 @@ def ingest_products():
                 id=idx, # Can use hash of code
                 vector=vector,
                 payload={
-                    "code": code,
-                    "name": name,
-                    "price": product.get("price", {}).get("formattedValue", "N/A"),
-                    "description": description
+                    "page_content": description,
+                    "metadata": {
+                        "code": code,
+                        "name": name,
+                        "price": product.get("price", {}).get("formattedValue", "N/A"),
+                        "description": description
+                    }
                 }
             ))
         except Exception as e:

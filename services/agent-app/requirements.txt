@@ -1,6 +1,8 @@
 langchain
 langgraph
-langchain-ollama
+langchain-openai
+langchain-huggingface
+sentence-transformers
 langchain-qdrant
 qdrant-client
 chainlit

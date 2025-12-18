@@ -1,15 +1,7 @@
 version: '3.8'
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - commerce-net
+  # Ollama is now running on the host machine
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -30,7 +22,7 @@ services:
       - commerce-net
 
   sap-mcp-server:
-    build: 
+    build:
       context: ./services/sap-mcp-server
     container_name: sap-mcp-server
     environment:
@@ -41,26 +33,28 @@ services:
       - "8001:8001"
     networks:
       - commerce-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   agent-app:
-    build: 
+    build:
       context: ./services/agent-app
     container_name: agent-app
     depends_on:
-      - ollama
       - qdrant
       - redis
       - sap-mcp-server
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - LLM_BASE_URL=${LLM_BASE_URL}
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - SAP_MCP_SERVER_URL=http://sap-mcp-server:8001/sse
       - MODEL_NAME=${MODEL_NAME}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
     ports:
-      - "8000:8000"
+      - "8085:8000"
+    volumes:
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - commerce-net
 
@@ -69,5 +63,5 @@ networks:
     driver: bridge
 
 volumes:
-  ollama_data:
   qdrant_data:
+  redis_data:

@@ -26,7 +26,7 @@ class SAPOCCClient:
         }
 
     async def search_products(self, query: str, pageSize: int = 5, currentPage: int = 0) -> Dict[str, Any]:
-        url = f"{self.base_url}/powertools/products/search"
+        url = f"{self.base_url}/electronics/products/search"
         params = {
             "query": query,
             "pageSize": pageSize,
@@ -38,7 +38,7 @@ class SAPOCCClient:
         return response.json()
 
     async def get_product_details(self, product_code: str) -> Dict[str, Any]:
-        url = f"{self.base_url}/powertools/products/{product_code}"
+        url = f"{self.base_url}/electronics/products/{product_code}"
         params = {"fields": "FULL"}
         response = await self.client.get(url, params=params, headers=await self._get_headers())
         response.raise_for_status()
@@ -51,14 +51,14 @@ class SAPOCCClient:
         # or assume we are 'current' with a token.
         # Let's try creating a cart for 'anonymous' first to be safe for local dev without complex auth.
         user = "anonymous"
-        url = f"{self.base_url}/powertools/users/{user}/carts"
+        url = f"{self.base_url}/electronics/users/{user}/carts"
         response = await self.client.post(url, headers=await self._get_headers())
         response.raise_for_status()
         return response.json()
 
     async def add_to_cart(self, cart_id: str, product_code: str, quantity: int = 1) -> Dict[str, Any]:
         user = "anonymous" # align with create_cart
-        url = f"{self.base_url}/powertools/users/{user}/carts/{cart_id}/entries"
+        url = f"{self.base_url}/electronics/users/{user}/carts/{cart_id}/entries"
         data = {
             "product": {"code": product_code},
             "quantity": quantity
@@ -67,9 +67,17 @@ class SAPOCCClient:
         response.raise_for_status()
         return response.json()
 
+    async def update_cart_entry(self, cart_id: str, entry_number: int, quantity: int) -> Dict[str, Any]:
+        user = "anonymous"
+        url = f"{self.base_url}/electronics/users/{user}/carts/{cart_id}/entries/{entry_number}"
+        data = {"quantity": quantity}
+        response = await self.client.patch(url, json=data, headers=await self._get_headers())
+        response.raise_for_status()
+        return response.json()
+
     async def get_cart(self, cart_id: str) -> Dict[str, Any]:
         user = "anonymous"
-        url = f"{self.base_url}/powertools/users/{user}/carts/{cart_id}"
+        url = f"{self.base_url}/electronics/users/{user}/carts/{cart_id}"
         params = {"fields": "FULL"}
         response = await self.client.get(url, params=params, headers=await self._get_headers())
         response.raise_for_status()
@@ -77,14 +85,14 @@ class SAPOCCClient:
 
     async def set_delivery_address(self, cart_id: str, address: Dict[str, Any]) -> Dict[str, Any]:
         user = "anonymous"
-        url = f"{self.base_url}/powertools/users/{user}/carts/{cart_id}/addresses/delivery"
+        url = f"{self.base_url}/electronics/users/{user}/carts/{cart_id}/addresses/delivery"
         response = await self.client.post(url, json=address, headers=await self._get_headers())
         response.raise_for_status()
         return response.json()
 
     async def set_delivery_mode(self, cart_id: str, delivery_mode: str) -> Dict[str, Any]:
         user = "anonymous"
-        url = f"{self.base_url}/powertools/users/{user}/carts/{cart_id}/deliverymode"
+        url = f"{self.base_url}/electronics/users/{user}/carts/{cart_id}/deliverymode"
         params = {"deliveryModeId": delivery_mode}
         response = await self.client.put(url, params=params, headers=await self._get_headers())
         response.raise_for_status()
@@ -92,7 +100,7 @@ class SAPOCCClient:
 
     async def place_order(self, cart_id: str, security_code: Optional[str] = None) -> Dict[str, Any]:
         user = "anonymous"
-        url = f"{self.base_url}/powertools/users/{user}/orders"
+        url = f"{self.base_url}/electronics/users/{user}/orders"
         params = {"cartId": cart_id}
         if security_code:
             params["securityCode"] = security_code

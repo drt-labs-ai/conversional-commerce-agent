@@ -1,6 +1,6 @@
 # Conversational Commerce Agent
 
-A local, containerized AI Chatbot for SAP Commerce, built with **LangGraph**, **Ollama**, and the **Model Context Protocol (MCP)**. 
+A local, containerized AI Chatbot for SAP Commerce, built with **LangGraph**, **Ollama**, and the **Model Context Protocol (MCP)**.
 
 This agentic system provides a conversational interface to discovering products and managing a shopping cart on a local SAP Commerce instance, demonstrating a fully private, local RAG and tool-use architecture.
 
@@ -13,15 +13,15 @@ The system is composed of Docker services orchestrated via Docker Compose.
 ```mermaid
 graph TD
     User[User via Chainlit UI] <--> AgentApp[Agent App -LangGraph-]
-    
+
     subgraph "Docker Network (commerce-net)"
         AgentApp -->|LLM Inference| Ollama[Ollama -Llama 3-]
         AgentApp -->|Vector Search| Qdrant[Qdrant -Vector DB-]
         AgentApp -->|State Persistence| Redis[Redis]
-        
+
         AgentApp -->|MCP Protocol -SSE-| MCPServer[SAP MCP Server]
     end
-    
+
     subgraph "External/Host"
         MCPServer -->|OCC REST APIs| SAP[SAP Commerce -Localhost-]
         Qdrant -.->|Ingestion| SAP
@@ -42,7 +42,8 @@ graph TD
     *   **Function**: Bridges the generic AI world with SAP Commerce OCC APIs.
     *   **Tools Exposed**: `search_products`, `get_product_details`, `create_cart`, `add_to_cart`, `get_cart`, `place_order`.
 3.  **Data Persistence & Intelligence**
-    *   **Ollama**: Local implementation of Llama 3 for reasoning and embedding.
+    *   **LLM Interface**: Connects to **LM Studio** (running on host) via OpenAI-compatible API.
+    *   **Embeddings**: Local execution using `sentence-transformers/all-MiniLM-L6-v2`.
     *   **Qdrant**: Vector database storing product embeddings for semantic search.
     *   **Redis**: Stores conversation history and agent state checkpoints.
 
@@ -50,10 +51,20 @@ graph TD
 
 ## 🛠 Prerequisites
 
+### Docker Compose Setup
+
 *   **Docker Desktop** (with Docker Compose)
 *   **SAP Commerce** (Hybris) running locally (Default: `https://localhost:9002/occ/v2`)
     *   *Note: Ensure your `host.docker.internal` allows connection from containers.*
 *   **Git**
+
+### Host LM Studio Setup
+
+1.  **LM Studio**:
+    *   Install [LM Studio](https://lmstudio.ai/).
+    *   Load your preferred model (e.g., `mistral-7b-instruct-v0.3`).
+    *   Start the Local Server (usually port `1234`).
+    *   Ensure "Cross-Origin-Resource-Sharing (CORS)" is enabled if needed (though we connect from container to host).
 
 ## 🚀 Build & Run
 
@@ -78,7 +89,7 @@ docker-compose up -d --build
 ### 3. Initialize Models (First Run Only)
 Pull the required LLM models into the Ollama container:
 ```bash
-docker exec -it ollama ollama pull llama3
+docker exec -it ollama ollama pull llama3.2:1b
 docker exec -it ollama ollama pull nomic-embed-text
 ```
 
@@ -92,7 +103,7 @@ docker exec -it agent-app python /app/scripts/ingest_products.py
 
 ## 💡 Usage
 
-Open your browser to: **[http://localhost:8000](http://localhost:8000)**
+Open your browser to: **[http://localhost:8085](http://localhost:8085)**
 
 ### Example Scenarios
 

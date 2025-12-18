@@ -2,15 +2,15 @@ import os
 import operator
 from typing import Annotated, Sequence, TypedDict, Union, List
 
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, FunctionMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import Tool
 
-from mcp_client_utils import get_mcp_tools
-from rag_utils import search_products_vector
+from sap_client import get_mcp_tools
+from product_search import search_products_vector
 
 # State Definition
 class AgentState(TypedDict):
@@ -18,9 +18,10 @@ class AgentState(TypedDict):
     next: str
 
 # LLM Setup
-llm = ChatOllama(
-    base_url=os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
-    model=os.getenv("MODEL_NAME", "llama3"),
+llm = ChatOpenAI(
+    base_url=os.getenv("LLM_BASE_URL", "http://host.docker.internal:1234/v1"),
+    api_key="lm-studio",
+    model=os.getenv("MODEL_NAME", "mistral-7b-instruct-v0.3"),
     temperature=0
 )
 
@@ -31,13 +32,16 @@ async def create_agent_graph():
     mcp_tools = await get_mcp_tools()
     
     # RAG Tool
-    async def rag_search(query: str):
+    from langchain_core.tools import StructuredTool
+
+    # RAG Tool
+    async def vector_search(query: str):
+        """Search for products using semantic vector search."""
         return search_products_vector(query)
     
-    rag_tool = Tool(
+    rag_tool = StructuredTool.from_function(
+        coroutine=vector_search,
         name="vector_search",
-        func=None,
-        coroutine=rag_search,
         description="Search for products using semantic vector search. Good for descriptions."
     )
     
@@ -50,15 +54,24 @@ async def create_agent_graph():
     # Helper to create an agent node
     def create_agent_node(agent_name: str, tools: List[Tool], system_prompt: str):
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
+            ("user", f"System Instructions: {system_prompt}"),
             MessagesPlaceholder(variable_name="messages"),
         ])
+        
         # We bind tools to the LLM
         agent_runnable = prompt | llm.bind_tools(tools)
         
         async def agent_node(state):
-            result = await agent_runnable.ainvoke(state)
-            return {"messages": [result]}
+            try:
+                # Trim messages to last 6 to fit in context
+                input_messages = state["messages"][-6:]
+                print(f"DEBUG: {agent_name} Input Messages: {len(input_messages)}")
+                result = await agent_runnable.ainvoke({"messages": input_messages})
+                print(f"DEBUG: {agent_name} raw output: {result.content[:50]}...")
+                return {"messages": [result]}
+            except Exception as e:
+                error_msg = f"Error executing agent logic: {str(e)}"
+                return {"messages": [AIMessage(content=error_msg)]}
             
         return agent_node, tools
 
@@ -79,83 +92,29 @@ async def create_agent_graph():
         "Always confirm details before placing an order."
     )
     
-    # 3. Supervisor / Router
-    # A simple router LLM that decides who to call next
-    
-    members = ["SearchAgent", "CartAgent"]
-    
-    system_prompt = (
-        "You are a supervisor tasked with managing a conversation between the"
-        " following workers: {members}. Given the following user request,"
-        " respond with the worker to act next. Each worker will perform a"
-        " task and respond with their results and status. When finished with questions about products,"
-        " allow the user to continue shopping or checkout.\n"
-        "If the user is asking a general question or the task is finished, respond with FINISH."
-    )
-    
-    options = ["FINISH"] + members
-    
-    function_def = {
-        "name": "route",
-        "description": "Select the next role.",
-        "parameters": {
-            "title": "routeSchema",
-            "type": "object",
-            "properties": {
-                "next": {
-                    "title": "Next",
-                    "anyOf": [
-                        {"enum": options},
-                    ],
-                }
-            },
-            "required": ["next"],
-        },
-    }
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        MessagesPlaceholder(variable_name="messages"),
-        (
-            "system",
-            "Given the conversation above, who should act next? "
-            "Or should we FINISH? Select one of: {options}",
-        ),
-    ]).partial(options=str(options), members=", ".join(members))
-
-    supervisor_chain = (
-        prompt 
-        | llm.bind_functions(functions=[function_def], function_call="route") 
-        | (lambda x: x.additional_kwargs["function_call"]["arguments"]) # JSON output parser might be better
-    )
-
-    # Note: Ollama JSON/Function calling output needs careful parsing. 
-    # For stability with Llama3 (which isn't native function calling aligned like OpenAI), 
-    # we might use a structured outputparser or just simple text prompting.
-    # Let's switch to a structured router for robustness if Llama3 func calling is flaky.
-    
     # Revised Router (Text-based for safety with generic Ollama models)
     router_prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are the supervisor. You have workers: SearchAgent, CartAgent. \n"
-         "User Request: {messages} \n"
-         "Who should act next? Return ONLY the name: SearchAgent or CartAgent. "
-         "If the answer is provided or conversation is over, return FINISH."),
+        ("user", "You are the supervisor. You have workers: SearchAgent, CartAgent. \n"
+         "User Request: {recent_messages} \n"
+         "Decide who should act next.\n"
+         "1. If the user wants to search for products or get details -> SearchAgent\n"
+         "2. If the user wants to manage cart or checkout -> CartAgent\n"
+         "3. If the answer is provided or conversation is over -> FINISH\n"
+         "Return ONLY the name: SearchAgent or CartAgent or FINISH."),
     ])
     
+    # Simple chain that returns the raw message content
     router_chain = router_prompt | llm 
 
     async def supervisor_node(state):
-        # Taking the last message to decide, or full history
-        # For simplicity, we just invoke the router.
         messages = state["messages"]
-        last_message = messages[-1]
+        # Trim messages for supervisor too
+        recent_messages = messages[-6:]
         
-        # Simple heuristic or LLM-based routing
-        # "I want to buy..." -> CartAgent
-        # "Show me drills..." -> SearchAgent
-        
-        response = await router_chain.ainvoke({"messages": messages})
+        # We need to format messages to string or pass them as is if prompt expects it
+        response = await router_chain.ainvoke({"recent_messages": recent_messages})
         text = response.content.strip()
+        print(f"DEBUG: Supervisor Decision: {text}")
         
         if "SearchAgent" in text:
             return {"next": "SearchAgent"}

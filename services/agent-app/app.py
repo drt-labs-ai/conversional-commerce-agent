@@ -1,12 +1,12 @@
 import chainlit as cl
-from agent_graph import create_agent_graph
+from agent_logic import create_agent_graph
 from langchain_core.messages import HumanMessage
 
 @cl.on_chat_start
 async def on_chat_start():
     app = await create_agent_graph()
     cl.user_session.set("app", app)
-    cl.user_session.set("config", {"configurable": {"thread_id": cl.user_session.get("id")}})
+    cl.user_session.set("config", {"configurable": {"thread_id": cl.user_session.get("id")}, "recursion_limit": 100})
     
     await cl.Message(content="Hello! I am your Conversational Commerce Assistant. How can I help you today?").send()
 
